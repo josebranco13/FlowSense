@@ -1,0 +1,501 @@
+from __future__ import annotations
+
+from dataclasses import asdict
+from datetime import datetime
+from math import sqrt
+from random import uniform
+from statistics import mean
+
+from .config import (
+    FLOW_SIMULATION_COEFFICIENT,
+    FLOW_SIMULATION_UPDATE_MS,
+    FLOW_SIMULATION_VARIATION,
+)
+from .models import MeasurementRecord
+
+
+class MeasurementMixin:
+    def measured_count_for_side(self, side: str) -> int:
+        if self.session is None:
+            return 0
+        return sum(1 for item in self.session.medicoes if item["lado"] == side)
+
+    def measurements_for_side(self, side: str) -> list[dict[str, object]]:
+        if self.session is None:
+            return []
+        return [item for item in self.session.medicoes if item["lado"] == side]
+
+    def expected_count_for_side(self, side: str) -> int:
+        if self.session is None or not side:
+            return 0
+        return int(self.session.circuitos_por_lado.get(side, 0))
+
+    @staticmethod
+    def is_fixed_plate_side(side: str) -> bool:
+        return side.strip().casefold() == "fixed plate"
+
+    def circuit_start_required_for_side(self, side: str) -> bool:
+        return bool(side) and not self.is_fixed_plate_side(side)
+
+    def circuit_start_for_side(self, side: str) -> int:
+        if self.session is None or not side:
+            return 1
+        if self.is_fixed_plate_side(side):
+            return 1
+        return int(self.session.circuitos_inicio_por_lado.get(side, 1))
+
+    def last_circuit_for_side(self, side: str) -> int:
+        expected = self.expected_count_for_side(side)
+        return self.circuit_start_for_side(side) + max(expected, 1) - 1
+
+    def next_circuit_for_side(self, side: str) -> int:
+        return self.circuit_start_for_side(side) + self.measured_count_for_side(side)
+
+    def circuit_progress_index(self) -> int:
+        if not self.current_side or not self.current_circuit:
+            return 0
+        return max(1, self.current_circuit - self.circuit_start_for_side(self.current_side) + 1)
+
+    def expected_count_for_current_side(self) -> int:
+        if self.session is None:
+            return 0
+        return self.expected_count_for_side(self.session.lado_molde)
+
+    def side_measurement_complete(self, side: str) -> bool:
+        expected = self.expected_count_for_side(side)
+        return expected > 0 and self.measured_count_for_side(side) >= expected
+
+    def measurement_record_for_circuit(
+        self,
+        side: str,
+        circuit: int,
+    ) -> dict[str, object] | None:
+        if self.session is None or not side or not circuit:
+            return None
+
+        for item in self.session.medicoes:
+            try:
+                item_circuit = int(item.get("circuito", 0))
+            except (TypeError, ValueError):
+                continue
+            if item.get("lado") == side and item_circuit == circuit:
+                return item
+        return None
+
+    def build_side_options(self) -> list[str]:
+        if self.session is None:
+            return []
+        options = []
+        for side in self.mold_side_options:
+            expected = self.session.circuitos_por_lado.get(side, 0)
+            measured = self.measured_count_for_side(side)
+            if expected > measured:
+                options.append(side)
+        if self.session.medicoes:
+            options.append("Concluir sessão")
+        return options
+
+    def start_measurement(self, selected_side_option: str) -> None:
+        assert self.session is not None
+        side = selected_side_option.replace("Lado ", "")
+        self.current_side = side
+        self.measurement_reviewing_saved_result = False
+        if self.side_measurement_complete(side):
+            self.current_circuit = self.last_circuit_for_side(side)
+            self.show_circuit_results()
+            return
+        self.current_circuit = self.next_circuit_for_side(side)
+        self.samples = []
+        self.measurement_running = False
+        self.status_text = ""
+        self.show_circuit_start()
+
+    def prepare_next_circuit_measurement(self) -> None:
+        assert self.session is not None
+        self.current_side = self.session.lado_molde or self.current_side
+        self.measurement_reviewing_saved_result = False
+        if self.side_measurement_complete(self.current_side):
+            self.current_circuit = self.last_circuit_for_side(self.current_side)
+            self.samples = []
+            self.measurement_running = False
+            self.status_text = ""
+            self.show_circuit_results()
+            return
+        self.current_circuit = self.next_circuit_for_side(self.current_side)
+        self.samples = []
+        self.measurement_running = False
+        self.status_text = ""
+        self.show_circuit_start()
+
+    def start_current_flow_measurement(self) -> None:
+        if self.session is None:
+            return
+        if not self.current_side:
+            self.current_side = self.session.lado_molde
+        if not self.current_circuit:
+            self.current_circuit = self.next_circuit_for_side(self.current_side)
+
+        expected = self.expected_count_for_side(self.current_side)
+        last_circuit = self.last_circuit_for_side(self.current_side)
+        if expected and self.current_circuit > last_circuit:
+            measured = self.measured_count_for_side(self.current_side)
+            if measured >= expected:
+                self.current_circuit = last_circuit
+                self.show_circuit_results()
+                return
+            self.current_circuit = self.next_circuit_for_side(self.current_side)
+
+        existing_record = self.measurement_record_for_circuit(
+            self.current_side,
+            self.current_circuit,
+        )
+        if existing_record is not None:
+            self.last_measurement_record = existing_record
+            if self.side_measurement_complete(self.current_side):
+                self.show_circuit_results()
+            else:
+                self.prepare_next_circuit_measurement()
+            return
+
+        if self.side_measurement_complete(self.current_side):
+            self.current_circuit = last_circuit
+            self.show_circuit_results()
+            return
+
+        self.measurement_reviewing_saved_result = False
+        self.samples = []
+        self.measurement_running = True
+        self.status_text = ""
+        self.show_measurement()
+
+    def stop_current_measurement(self) -> None:
+        self.measurement_running = False
+        self.cancel_measurement_update()
+        self.show_measurement()
+
+    def restart_current_measurement(self) -> None:
+        self.measurement_reviewing_saved_result = False
+        self.samples = []
+        self.measurement_running = True
+        self.status_text = ""
+        self.show_measurement()
+
+    def flow_stat_samples(self) -> list[float]:
+        return [sample for sample in self.samples if sample > 0]
+
+    def current_measurement_display_values(self) -> dict[str, str]:
+        if self.samples:
+            current = self.samples[-1]
+            values = {
+                "current": self.format_flow_display(current),
+            }
+            stat_samples = self.flow_stat_samples()
+            if stat_samples:
+                values.update(
+                    {
+                        "min": self.format_flow_display(min(stat_samples)),
+                        "avg": self.format_flow_display(mean(stat_samples)),
+                        "max": self.format_flow_display(max(stat_samples)),
+                    }
+                )
+            else:
+                values.update({"min": "-", "avg": "-", "max": "-"})
+            return values
+
+        record = self.measurement_record_for_circuit(
+            self.current_side,
+            self.current_circuit,
+        )
+        if record is None:
+            return {}
+
+        average = record.get("caudal_medio_l_min")
+        return {
+            "current": self.format_flow_display(average),
+            "min": self.format_flow_display(record.get("caudal_min_l_min")),
+            "avg": self.format_flow_display(average),
+            "max": self.format_flow_display(record.get("caudal_max_l_min")),
+        }
+
+    def simulated_flow_sample(self) -> float:
+        if self.session is None:
+            return 0.01
+
+        diameter_mm = max(float(self.session.diametro_mm), 0.0)
+        pressure_bar = max(float(self.session.pressao_entrada_bar), 0.0)
+        nominal_flow = (
+            FLOW_SIMULATION_COEFFICIENT
+            * diameter_mm**2
+            * sqrt(pressure_bar)
+        )
+        variation_factor = uniform(
+            1.0 - FLOW_SIMULATION_VARIATION,
+            1.0 + FLOW_SIMULATION_VARIATION,
+        )
+        return round(max(0.01, nominal_flow * variation_factor), 2)
+
+    def cancel_measurement_update(self) -> None:
+        job = getattr(self, "measurement_update_job", None)
+        if job is None:
+            return
+
+        try:
+            self.after_cancel(job)
+        except Exception:
+            pass
+        finally:
+            self.measurement_update_job = None
+
+    def schedule_measurement_update(self) -> None:
+        self.cancel_measurement_update()
+        self.measurement_update_job = self.after(
+            FLOW_SIMULATION_UPDATE_MS,
+            self.update_measurement_values,
+        )
+
+    def update_measurement_values(self) -> None:
+        self.measurement_update_job = None
+        if self.screen != "MEASURE" or not self.measurement_running:
+            return
+
+        sample = self.simulated_flow_sample()
+        self.samples.append(sample)
+
+        current = sample
+        values = {
+            "current": self.format_flow_display(current),
+        }
+        stat_samples = self.flow_stat_samples()
+        if stat_samples:
+            values.update(
+                {
+                    "min": self.format_flow_display(min(stat_samples)),
+                    "avg": self.format_flow_display(mean(stat_samples)),
+                    "max": self.format_flow_display(max(stat_samples)),
+                    "samples": str(len(stat_samples)),
+                }
+            )
+        else:
+            values.update({"min": "-", "avg": "-", "max": "-", "samples": "0"})
+
+        for key, value in values.items():
+            label = self.measure_labels.get(key)
+            if label is not None:
+                label.configure(text=value)
+
+        if self.measurement_running:
+            self.schedule_measurement_update()
+
+    def finish_current_measurement(self) -> None:
+        if self.session is None:
+            return
+        was_running = self.measurement_running
+        self.measurement_running = False
+        self.cancel_measurement_update()
+        if not self.current_side:
+            self.current_side = self.session.lado_molde
+        if not self.current_circuit:
+            self.current_circuit = self.next_circuit_for_side(self.current_side)
+
+        expected = self.expected_count_for_side(self.current_side)
+        last_circuit = self.last_circuit_for_side(self.current_side)
+        if expected and self.current_circuit > last_circuit:
+            measured = self.measured_count_for_side(self.current_side)
+            if measured >= expected:
+                self.current_circuit = last_circuit
+                self.samples = []
+                self.status_text = "Todos os circuitos pedidos ja foram medidos."
+                self.show_circuit_results()
+                return
+            self.current_circuit = self.next_circuit_for_side(self.current_side)
+
+        existing_record = self.measurement_record_for_circuit(
+            self.current_side,
+            self.current_circuit,
+        )
+        if (
+            self.measurement_reviewing_saved_result
+            and existing_record is not None
+            and not was_running
+        ):
+            self.last_measurement_record = existing_record
+            self.selected_index = 0
+            self.status_text = ""
+            self.show_measurement_result()
+            return
+
+        if not self.samples:
+            self.samples.append(self.simulated_flow_sample())
+
+        stat_samples = self.flow_stat_samples()
+        if not stat_samples:
+            self.status_text = "Nao existem valores positivos para guardar."
+            self.show_measurement()
+            return
+
+        record = MeasurementRecord(
+            session_id=self.session.session_id,
+            operador=self.session.operador,
+            molde=self.session.molde,
+            diametro_mm=self.session.diametro_mm,
+            pressao_entrada_bar=self.session.pressao_entrada_bar,
+            lado=self.current_side,
+            circuito=self.current_circuit,
+            caudal_min_l_min=round(min(stat_samples), 2),
+            caudal_medio_l_min=round(mean(stat_samples), 2),
+            caudal_max_l_min=round(max(stat_samples), 2),
+            amostras=len(stat_samples),
+            medido_em=datetime.now().isoformat(timespec="seconds"),
+        )
+        record_data = asdict(record)
+        existing_index = None
+        for index, item in enumerate(self.session.medicoes):
+            try:
+                item_circuit = int(item.get("circuito", 0))
+            except (TypeError, ValueError):
+                continue
+            if item.get("lado") == self.current_side and item_circuit == self.current_circuit:
+                existing_index = index
+                break
+
+        if existing_index is None:
+            self.session.medicoes.append(record_data)
+        else:
+            self.session.medicoes[existing_index] = record_data
+        self.last_measurement_record = record_data
+        self.append_measurement_csv(record)
+        self.save_session()
+
+        self.measurement_reviewing_saved_result = False
+        self.status_text = ""
+        self.selected_index = 0
+        self.show_measurement_result()
+
+    def highlight_current_measurement(self) -> None:
+        if self.session is None or self.last_measurement_record is None:
+            return
+
+        for item in self.session.medicoes:
+            if (
+                item.get("lado") == self.current_side
+                and item.get("circuito") == self.current_circuit
+            ):
+                item["destacado"] = not bool(item.get("destacado"))
+                self.last_measurement_record = item
+                break
+
+        self.selected_index = 1
+        self.save_session()
+        self.show_measurement_result()
+
+    def advance_after_measurement_result(self) -> None:
+        if self.session is None:
+            return
+
+        measured = self.measured_count_for_side(self.current_side)
+        expected = self.expected_count_for_side(self.current_side)
+        if measured < expected:
+            self.prepare_next_circuit_measurement()
+            return
+
+        self.selected_result_index = 0
+        self.result_editing = False
+        self.input_value = ""
+        self.show_circuit_results()
+
+    def selected_result_record(self) -> dict[str, object] | None:
+        if self.session is None or not self.current_side:
+            return None
+
+        records = sorted(self.measurements_for_side(self.current_side), key=lambda item: item["circuito"])
+        if not records:
+            return None
+
+        self.selected_result_index = min(self.selected_result_index, len(records) - 1)
+        return records[self.selected_result_index]
+
+    def result_edit_display_value(self) -> str:
+        return self.input_value.replace(".", ",")
+
+    def refresh_result_edit_display(self) -> None:
+        if not self.update_field_value("selected_result_value", self.result_edit_display_value()):
+            self.show_circuit_results()
+
+    def edit_selected_result(self) -> None:
+        if self.selected_result_record() is None:
+            return
+
+        self.result_editing = True
+        self.input_value = ""
+        self.status_text = ""
+        self.show_circuit_results()
+        self.focus_set()
+
+    def save_selected_result_edit(self) -> bool:
+        if not self.result_editing:
+            return True
+
+        text = self.input_value.strip().replace(",", ".")
+        try:
+            value = float(text)
+        except ValueError:
+            self.status_text = "Indique um valor de caudal valido."
+            self.show_circuit_results()
+            self.focus_set()
+            return False
+
+        if value < 0:
+            self.status_text = "O caudal nao pode ser negativo."
+            self.show_circuit_results()
+            self.focus_set()
+            return False
+
+        record = self.selected_result_record()
+        if record is None:
+            return False
+
+        value = round(value, 2)
+        record["caudal_medio_l_min"] = value
+        if (
+            self.last_measurement_record is not None
+            and self.last_measurement_record.get("lado") == record.get("lado")
+            and self.last_measurement_record.get("circuito") == record.get("circuito")
+        ):
+            self.last_measurement_record = record
+
+        self.result_editing = False
+        self.input_value = ""
+        self.status_text = ""
+        self.save_session()
+        self.show_circuit_results()
+        return True
+
+    def remeasure_current_circuit(self) -> None:
+        if self.session is None or not self.current_side or not self.current_circuit:
+            return
+        self.session.medicoes = [
+            item
+            for item in self.session.medicoes
+            if not (item["lado"] == self.current_side and item["circuito"] == self.current_circuit)
+        ]
+        self.save_session()
+        self.start_current_flow_measurement()
+
+    def remeasure_selected_result(self) -> None:
+        if self.session is None or not self.current_side:
+            return
+        self.result_editing = False
+        self.input_value = ""
+        records = sorted(self.measurements_for_side(self.current_side), key=lambda item: item["circuito"])
+        if not records:
+            return
+        self.selected_result_index = min(self.selected_result_index, len(records) - 1)
+        circuit = int(records[self.selected_result_index]["circuito"])
+        self.session.medicoes = [
+            item
+            for item in self.session.medicoes
+            if not (item["lado"] == self.current_side and item["circuito"] == circuit)
+        ]
+        self.current_circuit = circuit
+        self.save_session()
+        self.start_current_flow_measurement()

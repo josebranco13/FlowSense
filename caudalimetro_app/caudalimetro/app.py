@@ -1,0 +1,265 @@
+from __future__ import annotations
+
+from collections.abc import Callable
+from importlib import import_module
+from queue import Empty, Queue
+import tkinter as tk
+import tkinter.font as tkfont
+
+from .config import (
+    APP_BG,
+    APP_HEIGHT,
+    APP_WIDTH,
+    DATA_DIR,
+    DIAMETER_OPTIONS,
+    MAIL_DRAFTS_DIR,
+    MENU_OPTIONS,
+    MIN_UI_FONT_SIZE,
+    PDF_EXPORTS_DIR,
+    SENT_DIR,
+    SESSIONS_DIR,
+)
+from .database import get_usernames, initialize_database
+from .keyboard import KeyboardMixin
+from .measurement import MeasurementMixin
+from .models import MeasurementSession
+from .persistence import PersistenceMixin
+from .screens import ScreensMixin
+from .ui_components import UiComponentsMixin
+
+
+class CaudalimetroApp(
+    KeyboardMixin,
+    PersistenceMixin,
+    MeasurementMixin,
+    UiComponentsMixin,
+    ScreensMixin,
+    tk.Tk,
+):
+    def __init__(self) -> None:
+        super().__init__()
+        self.title("Caudalímetro Industrial")
+        self.geometry(f"{APP_WIDTH}x{APP_HEIGHT}")
+        self.minsize(APP_WIDTH, APP_HEIGHT)
+        self.configure(bg=APP_BG)
+        self.configure_default_fonts()
+        self.option_add("*Button.takeFocus", 0)
+        self.maximize_window()
+
+        # novo
+        self.attributes("-alpha", 0.0)
+        self.show_splash()
+
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        SENT_DIR.mkdir(parents=True, exist_ok=True)
+        PDF_EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        MAIL_DRAFTS_DIR.mkdir(parents=True, exist_ok=True)
+        initialize_database()
+        self.normalize_sessions_dir()
+
+        self.screen = ""
+        self.operator_id = ""
+        self.pin = ""
+        self.active_field = 0
+        self.selected_index = 0
+        self.selected_exported_record_index = 0
+        self.exported_records_first_row = 0
+        self.email_send_in_progress = False
+        self.send_review_first_row = 0
+        self.send_review_expanded_group_key: tuple[str, str, str, str] | None = None
+        self.send_review_selected_measurement_ref: tuple[str, int] | None = None
+        self.send_review_checked_group_keys: set[tuple[str, str, str, str]] = set()
+        self.operator_options = get_usernames()
+        self.operator_list_open = False
+        self.operator_selected_index = 0
+        self.operator_visible_indices: list[int] = []
+        self.admin_operator_input = ""
+        self.admin_new_operator_name = ""
+        self.admin_new_operator_pin = ""
+        self.admin_add_active_field = 0
+        self.admin_reset_operator_name = ""
+        self.admin_reset_operator_pin = ""
+        self.selected_admin_operator_index = 0
+        self.pending_admin_operator_removal = ""
+        self.admin_operator_labels: list[tk.Label] = []
+        self.admin_visible_indices: list[int] = []
+        self.input_value = ""
+        self.login_active_field = 0
+        self.circuit_active_field = 0
+        self.circuit_inputs = {"count": "", "start": ""}
+        self.diameter_options = DIAMETER_OPTIONS.copy()
+        self.menu_options = MENU_OPTIONS.copy()
+        self.selected_menu_option = ""
+        self.mold_side_options = [
+            "Fixed plate",
+            "Moving Plate",
+            "Middle Plate",
+            "Jiggle",
+            "Cam Slide",
+        ]
+        self.selected_mold_side_index = 0
+        self.mold_side_dropdown_open = False
+        self.side_options: list[str] = []
+        self.session: MeasurementSession | None = None
+        self.current_side = ""
+        self.current_circuit = 0
+        self.samples: list[float] = []
+        self.measurement_running = False
+        self.measurement_reviewing_saved_result = False
+        self.measurement_update_job = None
+        self.last_measurement_record: dict[str, object] | None = None
+        self.selected_result_index = 0
+        self.result_editing = False
+        self.option_labels: list[tk.Label] = []
+        self.diameter_labels: list[tk.Label] = []
+        self.field_value_labels: dict[str, tk.Label] = {}
+        self.measure_labels: dict[str, tk.Label] = {}
+        self.status_text = ""
+        self.hardware_inputs: list[object] = []
+        self.hardware_event_queue: Queue[
+            tuple[Callable[..., None], tuple[object, ...]]
+        ] = Queue()
+        self.hardware_event_job = None
+
+        self.after(3000, self.auto_export_completed_sessions_on_boot)
+
+        self.bind_all("<KeyPress>", self.on_key)
+        self.bind_all("<ButtonRelease-1>", self.restore_keyboard_focus, add="+")
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self.start_hardware_event_polling()
+        self.initialize_hardware_inputs()
+        #self.show_login()
+        self.after_idle(self.restore_keyboard_focus)
+
+    def configure_default_fonts(self) -> None:
+        """Garante uma fonte legível também nos widgets sem estilo explícito."""
+        for font_name in (
+            "TkDefaultFont",
+            "TkTextFont",
+            "TkMenuFont",
+            "TkHeadingFont",
+            "TkCaptionFont",
+            "TkSmallCaptionFont",
+            "TkIconFont",
+            "TkTooltipFont",
+        ):
+            try:
+                named_font = tkfont.nametofont(font_name)
+                if abs(int(named_font.actual("size"))) < MIN_UI_FONT_SIZE:
+                    named_font.configure(size=MIN_UI_FONT_SIZE)
+            except tk.TclError:
+                continue
+
+    def maximize_window(self) -> None:
+        try:
+            self.state("zoomed")
+        except tk.TclError:
+            self.attributes("-zoomed", True)
+
+    def destroy(self) -> None:
+        self.cancel_hardware_event_polling()
+        self.close_hardware_inputs()
+        self.cancel_measurement_update()
+        super().destroy()
+
+    @staticmethod
+    def import_hardware_module(module_name: str):
+        last_error: ModuleNotFoundError | None = None
+        for package_name in (
+            f"testes.{module_name}",
+            f"caudalimetro_app.testes.{module_name}",
+        ):
+            try:
+                return import_module(package_name)
+            except ModuleNotFoundError as exc:
+                last_error = exc
+
+        if last_error is not None:
+            raise last_error
+
+        raise ModuleNotFoundError(module_name)
+
+    def initialize_hardware_inputs(self) -> None:
+        self.initialize_physical_buttons()
+        self.initialize_keypad()
+
+    def initialize_physical_buttons(self) -> None:
+        try:
+            buttons_module = self.import_hardware_module("buttons")
+            button_panel = buttons_module.PhysicalButtonPanel(
+                lambda button_name: self.enqueue_hardware_event(
+                    self.on_physical_button,
+                    button_name,
+                )
+            )
+        except Exception as exc:
+            print(f"Botoes fisicos desativados: {exc}")
+            return
+
+        self.hardware_inputs.append(button_panel)
+        print("Botoes fisicos inicializados.")
+
+    def initialize_keypad(self) -> None:
+        try:
+            keypad_module = self.import_hardware_module("keypad")
+            keypad = keypad_module.MatrixKeypad(
+                lambda key: self.enqueue_hardware_event(self.on_keypad_key, key)
+            )
+            keypad.start()
+        except Exception as exc:
+            print(f"Numpad fisico desativado: {exc}")
+            return
+
+        self.hardware_inputs.append(keypad)
+        print("Numpad fisico inicializado.")
+
+    def enqueue_hardware_event(
+        self,
+        callback: Callable[..., None],
+        *args: object,
+    ) -> None:
+        self.hardware_event_queue.put((callback, args))
+
+    def start_hardware_event_polling(self) -> None:
+        self.hardware_event_job = self.after(25, self.process_hardware_events)
+
+    def process_hardware_events(self) -> None:
+        while True:
+            try:
+                callback, args = self.hardware_event_queue.get_nowait()
+            except Empty:
+                break
+
+            try:
+                callback(*args)
+            except Exception as exc:
+                print(f"Erro ao processar entrada fisica: {exc}")
+
+        try:
+            self.hardware_event_job = self.after(25, self.process_hardware_events)
+        except tk.TclError:
+            self.hardware_event_job = None
+
+    def cancel_hardware_event_polling(self) -> None:
+        if self.hardware_event_job is None:
+            return
+
+        try:
+            self.after_cancel(self.hardware_event_job)
+        except tk.TclError:
+            pass
+        self.hardware_event_job = None
+
+    def close_hardware_inputs(self) -> None:
+        for hardware_input in self.hardware_inputs:
+            close = getattr(hardware_input, "close", None)
+            if not callable(close):
+                continue
+
+            try:
+                close()
+            except Exception as exc:
+                print(f"Erro ao fechar entrada fisica: {exc}")
+
+        self.hardware_inputs = []

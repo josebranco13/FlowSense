@@ -1,0 +1,29 @@
+{
+  "molde": "AHA342334234",
+  "ficheiro": "Registo_Caudais_AHA342334234.pdf",
+  "criado_em": "2026-07-23T09:39:27",
+  "atualizado_em": "2026-07-23T09:39:27",
+  "operadores": [
+    "AMADO"
+  ],
+  "medicoes": [
+    {
+      "session_id": "20260715_135732_b50f34",
+      "operador": "AMADO",
+      "molde": "AHA342334234",
+      "diametro_mm": "1/8",
+      "pressao_entrada_bar": 5.0,
+      "lado": "Fixed plate",
+      "circuito": 1,
+      "caudal_min_l_min": 0.65,
+      "caudal_medio_l_min": 0.74,
+      "caudal_max_l_min": 0.81,
+      "amostras": 3,
+      "medido_em": "2026-07-15T13:57:49",
+      "destacado": true,
+      "_source_file": "20260715_135732_b50f34.json"
+    }
+  ],
+  "email_enviado_em": "2026-07-23T09:42:41",
+  "email_estado": "enviado"
+}

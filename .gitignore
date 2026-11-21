@@ -1,0 +1,10 @@
+image.png
+__pycache__/
+*.py[cod]
+caudalimetro_app/data/sessoes
+caudalimetro_app/caudalimetro/__pycache__
+caudalimetro_app/data/medicoes.csv
+/caudalimetro_app/caudalimetro/__pycache__
+caudalimetro_app/caudalimetro/credentials.json
+caudalimetro_app/caudalimetro/token.json
+caudalimetro_app/caudalimetro/.token.json.tmp

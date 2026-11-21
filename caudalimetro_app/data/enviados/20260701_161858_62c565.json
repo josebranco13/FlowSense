@@ -1,0 +1,38 @@
+{
+  "session_id": "20260701_161858_62c565",
+  "operador": "AMADO",
+  "molde": "AHA3234",
+  "lado_molde": "Fixed plate",
+  "diametro_mm": "1/2",
+  "pressao_entrada_bar": 5.0,
+  "circuitos_por_lado": {
+    "Fixed plate": 2
+  },
+  "circuitos_inicio_por_lado": {
+    "Fixed plate": 1
+  },
+  "estado": "exportado_pdf",
+  "criado_em": "2026-07-01T16:18:58",
+  "atualizado_em": "2026-07-13T17:47:32",
+  "enviado_em": "2026-07-13T17:47:32",
+  "medicoes": [
+    {
+      "circuito": 1,
+      "caudal_min_l_min": 10.88,
+      "caudal_medio_l_min": 10.88,
+      "caudal_max_l_min": 10.88,
+      "amostras": 1,
+      "medido_em": "2026-07-01T16:19:05"
+    },
+    {
+      "circuito": 2,
+      "caudal_min_l_min": 11.53,
+      "caudal_medio_l_min": 11.53,
+      "caudal_max_l_min": 11.53,
+      "amostras": 1,
+      "medido_em": "2026-07-01T16:19:07"
+    }
+  ],
+  "confirmado_por_operador_em": "2026-07-04T20:30:31",
+  "pdf_ficheiro": "Registo_Caudais_AHA3234.pdf"
+}

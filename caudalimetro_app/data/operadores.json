@@ -1,0 +1,36 @@
+{
+  "operators": [
+    "ADMIN",
+    "WORKER1",
+    "WORKER2",
+    "WORKER3",
+    "WORKER4",
+    "WORKER5",
+    "WORKER6",
+    "WORKER7",
+    "WORKER8",
+    "WORKER9",
+    "WORKER10",
+    "WORKER11",
+    "WORKER12",
+    "WORKER13",
+    "WORKER14"
+  ],
+  "passwords": {
+    "ADMIN": "7482",
+    "WORKER1": "1936",
+    "WORKER2": "6205",
+    "WORKER3": "8517",
+    "WORKER4": "3049",
+    "WORKER5": "9721",
+    "WORKER6": "4658",
+    "WORKER7": "2390",
+    "WORKER8": "5863",
+    "WORKER9": "7140",
+    "WORKER10": "0586",
+    "WORKER11": "3927",
+    "WORKER12": "8074",
+    "WORKER13": "1469",
+    "WORKER14": "6318"
+  }
+}

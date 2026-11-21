@@ -1,0 +1,43 @@
+{
+  "molde": "AHA1",
+  "ficheiro": "Registo_Caudais_AHA1.pdf",
+  "criado_em": "2026-07-13T17:47:36",
+  "atualizado_em": "2026-07-13T17:47:36",
+  "operadores": [
+    "AMADO"
+  ],
+  "medicoes": [
+    {
+      "session_id": "20260611_143727_c13bd3",
+      "operador": "AMADO",
+      "molde": "AHA1",
+      "diametro_mm": "3/8",
+      "pressao_entrada_bar": 5.0,
+      "lado": "Fixed plate",
+      "circuito": 1,
+      "caudal_min_l_min": 4.7,
+      "caudal_medio_l_min": 4.83,
+      "caudal_max_l_min": 4.91,
+      "amostras": 5,
+      "medido_em": "2026-06-11T14:37:47",
+      "_source_file": "20260611_143727_c13bd3.json"
+    },
+    {
+      "session_id": "20260611_143727_c13bd3",
+      "operador": "AMADO",
+      "molde": "AHA1",
+      "diametro_mm": "3/8",
+      "pressao_entrada_bar": 5.0,
+      "lado": "Fixed plate",
+      "circuito": 2,
+      "caudal_min_l_min": 4.64,
+      "caudal_medio_l_min": 4.73,
+      "caudal_max_l_min": 4.79,
+      "amostras": 3,
+      "medido_em": "2026-06-11T14:37:55",
+      "_source_file": "20260611_143727_c13bd3.json"
+    }
+  ],
+  "email_enviado_em": "2026-07-13T17:47:43",
+  "email_estado": "enviado"
+}

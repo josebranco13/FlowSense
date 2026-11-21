@@ -1,0 +1,43 @@
+{
+  "molde": "AHA2",
+  "ficheiro": "Registo_Caudais_AHA2.pdf",
+  "criado_em": "2026-07-13T17:47:35",
+  "atualizado_em": "2026-07-13T17:47:35",
+  "operadores": [
+    "ANGELOC"
+  ],
+  "medicoes": [
+    {
+      "session_id": "20260611_143837_37613e",
+      "operador": "ANGELOC",
+      "molde": "AHA2",
+      "diametro_mm": "3/8",
+      "pressao_entrada_bar": 4.0,
+      "lado": "Fixed plate",
+      "circuito": 1,
+      "caudal_min_l_min": 4.29,
+      "caudal_medio_l_min": 4.33,
+      "caudal_max_l_min": 4.38,
+      "amostras": 2,
+      "medido_em": "2026-06-11T14:38:53",
+      "_source_file": "20260611_143837_37613e.json"
+    },
+    {
+      "session_id": "20260611_143837_37613e",
+      "operador": "ANGELOC",
+      "molde": "AHA2",
+      "diametro_mm": "3/8",
+      "pressao_entrada_bar": 4.0,
+      "lado": "Fixed plate",
+      "circuito": 2,
+      "caudal_min_l_min": 4.27,
+      "caudal_medio_l_min": 4.73,
+      "caudal_max_l_min": 5.2,
+      "amostras": 2,
+      "medido_em": "2026-06-11T14:39:13",
+      "_source_file": "20260611_143837_37613e.json"
+    }
+  ],
+  "email_enviado_em": "2026-07-13T17:48:20",
+  "email_estado": "enviado"
+}

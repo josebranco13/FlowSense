@@ -1,0 +1,43 @@
+{
+  "molde": "AHA3234",
+  "ficheiro": "Registo_Caudais_AHA3234.pdf",
+  "criado_em": "2026-07-13T17:47:32",
+  "atualizado_em": "2026-07-13T17:47:32",
+  "operadores": [
+    "AMADO"
+  ],
+  "medicoes": [
+    {
+      "session_id": "20260701_161858_62c565",
+      "operador": "AMADO",
+      "molde": "AHA3234",
+      "diametro_mm": "1/2",
+      "pressao_entrada_bar": 5.0,
+      "lado": "Fixed plate",
+      "circuito": 1,
+      "caudal_min_l_min": 10.88,
+      "caudal_medio_l_min": 10.88,
+      "caudal_max_l_min": 10.88,
+      "amostras": 1,
+      "medido_em": "2026-07-01T16:19:05",
+      "_source_file": "20260701_161858_62c565.json"
+    },
+    {
+      "session_id": "20260701_161858_62c565",
+      "operador": "AMADO",
+      "molde": "AHA3234",
+      "diametro_mm": "1/2",
+      "pressao_entrada_bar": 5.0,
+      "lado": "Fixed plate",
+      "circuito": 2,
+      "caudal_min_l_min": 11.53,
+      "caudal_medio_l_min": 11.53,
+      "caudal_max_l_min": 11.53,
+      "amostras": 1,
+      "medido_em": "2026-07-01T16:19:07",
+      "_source_file": "20260701_161858_62c565.json"
+    }
+  ],
+  "email_enviado_em": "2026-07-13T17:48:20",
+  "email_estado": "enviado"
+}
